@@ -1,0 +1,47 @@
+# .github/workflows/scrape_maharera.yml
+# Drop this file into your repo at that exact path.
+# Runs every Sunday at midnight — adjust cron as needed.
+# On new data found: commits the updated CSV back to the repo automatically.
+
+name: MahaRERA Weekly Scrape
+
+on:
+  schedule:
+    - cron: "0 0 * * 0"   # Every Sunday midnight UTC
+  workflow_dispatch:        # Also allows manual trigger from GitHub UI
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 pandas
+
+      - name: Run scraper
+        id: scrape
+        run: |
+          python maharera_scraper_v2.py
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true  # don't fail the job on exit code 1 (new data)
+
+      - name: Commit new data if found
+        if: steps.scrape.outputs.exit_code == '1'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add maharera_mumbai.csv scraper_state.json
+          git commit -m "data: MahaRERA update $(date +'%Y-%m-%d')"
+          git push
+
+      - name: Nothing new
+        if: steps.scrape.outputs.exit_code == '0'
+        run: echo "No new projects found this week."
